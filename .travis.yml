@@ -1,4 +1,5 @@
 env:
+ - GHCVER=7.4.2
  - GHCVER=7.6.3  TRAVIS=yes
  - GHCVER=7.8.4  TRAVIS=yes
  - GHCVER=7.10.1 TRAVIS=yes
