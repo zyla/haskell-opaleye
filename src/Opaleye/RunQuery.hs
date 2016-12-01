@@ -14,13 +14,13 @@ import qualified Database.PostgreSQL.Simple.FromRow as FR
 import qualified Data.String as String
 
 import           Opaleye.Column (Column)
+import           Opaleye.Internal.Helpers ((.:))
 import qualified Opaleye.Sql as S
 import           Opaleye.QueryArr (Query)
 import           Opaleye.Internal.RunQuery (QueryRunner(QueryRunner))
 import qualified Opaleye.Internal.RunQuery as IRQ
 import qualified Opaleye.Internal.QueryArr as Q
 
-import qualified Data.Profunctor as P
 import qualified Data.Profunctor.Product.Default as D
 
 -- * Running 'Query's
@@ -82,10 +82,8 @@ runQueryFold = runQueryFoldExplicit D.def
 -- @
 queryRunnerColumn :: (Column a' -> Column a) -> (b -> b')
                   -> IRQ.QueryRunnerColumn a b -> IRQ.QueryRunnerColumn a' b'
-queryRunnerColumn colF haskellF qrc = IRQ.QueryRunnerColumn (P.lmap colF u)
-                                                            (fmapFP haskellF fp)
-  where IRQ.QueryRunnerColumn u fp = qrc
-        fmapFP = fmap . fmap . fmap
+queryRunnerColumn _ = changePhantom .: fmap
+  where changePhantom (IRQ.QueryRunnerColumn fp) = IRQ.QueryRunnerColumn fp
 
 -- * Explicit versions
 
