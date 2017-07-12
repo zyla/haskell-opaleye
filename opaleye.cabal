@@ -52,6 +52,7 @@ library
                    Opaleye.Aggregate,
                    Opaleye.Binary,
                    Opaleye.Column,
+                   Opaleye.Connection,
                    Opaleye.Constant,
                    Opaleye.Distinct,
                    Opaleye.FunctionalJoin,

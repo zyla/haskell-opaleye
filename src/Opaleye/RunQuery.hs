@@ -19,6 +19,7 @@ import           Opaleye.QueryArr (Query)
 import           Opaleye.Internal.RunQuery (QueryRunner(QueryRunner))
 import qualified Opaleye.Internal.RunQuery as IRQ
 import qualified Opaleye.Internal.QueryArr as Q
+import qualified Opaleye.Connection as C
 
 import qualified Data.Profunctor as P
 import qualified Data.Profunctor.Product.Default as D
@@ -45,8 +46,9 @@ import qualified Data.Profunctor.Product.Default as D
 --
 -- Opaleye types are converted to Haskell types based on instances of
 -- the 'Opaleye.Internal.RunQuery.QueryRunnerColumnDefault' typeclass.
-runQuery :: D.Default QueryRunner columns haskells
-         => PGS.Connection
+runQuery :: ( D.Default QueryRunner columns haskells
+            , C.IsConnection conn )
+         => conn
          -> Query columns
          -> IO [haskells]
 runQuery = runQueryExplicit D.def
@@ -57,8 +59,9 @@ runQuery = runQueryExplicit D.def
 -- This fold is /not/ strict. The stream consumer is responsible for
 -- forcing the evaluation of its result to avoid space leaks.
 runQueryFold
-  :: D.Default QueryRunner columns haskells
-  => PGS.Connection
+  :: ( D.Default QueryRunner columns haskells
+     , C.IsConnection conn )
+  => conn
   -> Query columns
   -> b
   -> (b -> haskells -> IO b)
@@ -89,23 +92,25 @@ queryRunnerColumn colF haskellF qrc = IRQ.QueryRunnerColumn (P.lmap colF u)
 
 -- * Explicit versions
 
-runQueryExplicit :: QueryRunner columns haskells
-                 -> PGS.Connection
+runQueryExplicit :: C.IsConnection conn
+                 => QueryRunner columns haskells
+                 -> conn
                  -> Query columns
                  -> IO [haskells]
-runQueryExplicit qr conn q = maybe (return []) (PGS.queryWith_ parser conn) sql
+runQueryExplicit qr conn q = maybe (return []) (C.queryWith_ parser conn) sql
   where (sql, parser) = prepareQuery qr q
 
 runQueryFoldExplicit
-  :: QueryRunner columns haskells
-  -> PGS.Connection
+  :: C.IsConnection conn
+  => QueryRunner columns haskells
+  -> conn
   -> Query columns
   -> b
   -> (b -> haskells -> IO b)
   -> IO b
 runQueryFoldExplicit qr conn q z f = case sql of
   Nothing   -> return z
-  Just sql' -> PGS.foldWith_ parser conn sql' z f
+  Just sql' -> C.foldWith_ parser conn sql' z f
   where (sql, parser) = prepareQuery qr q
 
 -- * Deprecated functions
