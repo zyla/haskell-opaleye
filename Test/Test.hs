@@ -10,6 +10,7 @@ import           Control.Applicative              ((<$>), (<*>), (<|>))
 import qualified Control.Applicative              as A
 import           Control.Arrow                    ((&&&), (***), (<<<), (>>>))
 import qualified Control.Arrow                    as Arr
+import           Control.Monad                    (forM_)
 import qualified Data.Aeson                       as Json
 import qualified Data.Function                    as F
 import qualified Data.List                        as L
@@ -1099,6 +1100,11 @@ testLiterals = do
     testH (pure (O.sqlZonedTime value))
           (\r -> map Time.zonedTimeToUTC r `shouldBe` [Time.zonedTimeToUTC value])
 
+testLockingClause :: Test
+testLockingClause = do
+  forM_ [O.ForUpdate, O.ForNoKeyUpdate, O.ForShare, O.ForKeyShare] $ \s ->
+    it ("selects with lock strength " <> show s) $ O.locking s table1Q `queryShouldReturnSorted` table1data
+
 main :: IO ()
 main = do
   let envVarName = "POSTGRES_CONNSTRING"
@@ -1133,7 +1139,7 @@ main = do
   insert (table9, table9columndata)
 
   -- Need to run quickcheck after table data has been inserted
-  QuickCheck.run conn
+--  QuickCheck.run conn
 
   hspec $ do
     before (return conn) $ do
@@ -1231,3 +1237,5 @@ main = do
             O.pgDay (read "2018-01-01") (read "2018-01-12")
       describe "literals" $ do
         testLiterals
+      describe "locking clause" $ do
+        testLockingClause

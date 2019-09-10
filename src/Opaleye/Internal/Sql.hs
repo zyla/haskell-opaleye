@@ -43,7 +43,8 @@ data From = From {
   orderBy    :: [(HSql.SqlExpr, HSql.SqlOrder)],
   distinctOn :: Maybe (NEL.NonEmpty HSql.SqlExpr),
   limit      :: Maybe Int,
-  offset     :: Maybe Int
+  offset     :: Maybe Int,
+  locking    :: Maybe PQ.LockStrength
   }
           deriving Show
 
@@ -96,6 +97,7 @@ sqlQueryGenerator = PQ.PrimQueryFold
   , PQ.label             = label
   , PQ.relExpr           = relExpr
   , PQ.existsf           = exists
+  , PQ.locking           = locking_
   }
 
 exists :: Bool -> Select -> Select -> Select
@@ -238,7 +240,8 @@ newSelect = From {
   orderBy    = [],
   distinctOn = Nothing,
   limit      = Nothing,
-  offset     = Nothing
+  offset     = Nothing,
+  locking    = Nothing
   }
 
 sqlExpr :: HPQ.PrimExpr -> HSql.SqlExpr
@@ -268,3 +271,6 @@ relExpr pe columns = SelectFrom $
     newSelect { attrs = SelectAttrs (ensureColumns (map sqlBinding columns))
               , tables = [RelExpr (sqlExpr pe)]
               }
+
+locking_ :: PQ.LockStrength -> Select -> Select
+locking_ strength s = SelectFrom $ newSelect { tables = [s], locking = Just strength }

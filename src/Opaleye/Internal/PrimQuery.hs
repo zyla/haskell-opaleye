@@ -18,6 +18,8 @@ data BinOp = Except
            | IntersectAll
              deriving Show
 
+data LockStrength = ForUpdate | ForNoKeyUpdate | ForShare | ForKeyShare deriving Show
+
 data JoinType = LeftJoin | RightJoin | FullJoin deriving Show
 
 data TableIdentifier = TableIdentifier
@@ -64,6 +66,7 @@ data PrimQuery' a = Unit
                               (PrimQuery' a, PrimQuery' a)
                   | Label     String (PrimQuery' a)
                   | RelExpr   HPQ.PrimExpr (Bindings HPQ.PrimExpr)
+                  | Locking   LockStrength (PrimQuery' a)
                  deriving Show
 
 type PrimQuery = PrimQuery' ()
@@ -90,6 +93,7 @@ data PrimQueryFold' a p = PrimQueryFold
   , label             :: String -> p -> p
   , relExpr           :: HPQ.PrimExpr -> Bindings HPQ.PrimExpr -> p
     -- ^ A relation-valued expression
+  , locking           :: LockStrength -> p -> p
   }
 
 
@@ -108,6 +112,7 @@ primQueryFoldDefault = PrimQueryFold
   , label             = Label
   , relExpr           = RelExpr
   , existsf           = Exists
+  , locking           = Locking
   }
 
 foldPrimQuery :: PrimQueryFold' a p -> PrimQuery' a -> p
@@ -126,6 +131,7 @@ foldPrimQuery f = fix fold
           Label l pq                  -> label             f l (self pq)
           RelExpr pe syms             -> relExpr           f pe syms
           Exists b q1 q2              -> existsf           f b (self q1) (self q2)
+          Locking s q                 -> locking           f s (self q)
         fix g = let x = g x in x
 
 times :: PrimQuery -> PrimQuery -> PrimQuery

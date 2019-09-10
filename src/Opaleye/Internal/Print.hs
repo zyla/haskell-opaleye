@@ -16,6 +16,8 @@ import           Opaleye.Internal.Sql (Select(SelectFrom,
 import qualified Opaleye.Internal.HaskellDB.Sql as HSql
 import qualified Opaleye.Internal.HaskellDB.Sql.Print as HPrint
 
+import qualified Opaleye.Internal.PrimQuery as PQ
+
 import           Text.PrettyPrint.HughesPJ (Doc, ($$), (<+>), text, empty,
                                             parens)
 import qualified Data.List.NonEmpty as NEL
@@ -48,6 +50,7 @@ ppSelectFrom s = text "SELECT"
                  $$  HPrint.ppOrderBy (Sql.orderBy s)
                  $$  ppLimit (Sql.limit s)
                  $$  ppOffset (Sql.offset s)
+                 $$  ppLockingClause (Sql.locking s)
 
 
 ppSelectJoin :: Join -> Doc
@@ -137,6 +140,15 @@ ppLimit (Just n) = text ("LIMIT " ++ show n)
 ppOffset :: Maybe Int -> Doc
 ppOffset Nothing = empty
 ppOffset (Just n) = text ("OFFSET " ++ show n)
+
+ppLockingClause :: Maybe PQ.LockStrength -> Doc
+ppLockingClause Nothing = empty
+ppLockingClause (Just s) = text ("FOR " ++ ppLockStrength s)
+  where
+    ppLockStrength PQ.ForUpdate      = "UPDATE"
+    ppLockStrength PQ.ForNoKeyUpdate = "NO KEY UPDATE"
+    ppLockStrength PQ.ForShare       = "SHARE"
+    ppLockStrength PQ.ForKeyShare    = "KEY SHARE"
 
 ppValues :: [[HSql.SqlExpr]] -> Doc
 ppValues v = HPrint.ppAs (Just "V") (parens (text "VALUES" $$ HPrint.commaV ppValuesRow v))
