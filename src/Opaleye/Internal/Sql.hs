@@ -93,7 +93,7 @@ sqlQueryGenerator sqlGenerator = PQ.PrimQueryFold
   , PQ.baseTable         = baseTable sqlGenerator
   , PQ.product           = product sqlGenerator
   , PQ.aggregate         = aggregate sqlGenerator
-  , PQ.distinctOnOrderBy = distinctOnOrderBy
+  , PQ.distinctOnOrderBy = distinctOnOrderBy sqlGenerator
   , PQ.limit             = limit_
   , PQ.join              = join sqlGenerator
   , PQ.values            = values sqlGenerator
@@ -188,11 +188,11 @@ aggregate sqlGenerator aggrs' s =
 aggrExpr :: Maybe (HPQ.AggrOp, [HPQ.OrderExpr], HPQ.AggrDistinct) -> HPQ.PrimExpr -> HPQ.PrimExpr
 aggrExpr = maybe id (\(op, ord, distinct) e -> HPQ.AggrExpr distinct op e ord)
 
-distinctOnOrderBy :: Maybe (NEL.NonEmpty HPQ.PrimExpr) -> [HPQ.OrderExpr] -> Select -> Select
-distinctOnOrderBy distinctExprs orderExprs s = SelectFrom $ newSelect
+distinctOnOrderBy :: SG.SqlGenerator -> Maybe (NEL.NonEmpty HPQ.PrimExpr) -> [HPQ.OrderExpr] -> Select -> Select
+distinctOnOrderBy sqlGenerator distinctExprs orderExprs s = SelectFrom $ newSelect
     { tables     = oneTable s
-    , distinctOn = fmap (sqlExpr SD.defaultSqlGenerator) <$> distinctExprs
-    , orderBy    = map (SD.toSqlOrder SD.defaultSqlGenerator) $
+    , distinctOn = fmap (sqlExpr sqlGenerator) <$> distinctExprs
+    , orderBy    = map (SD.toSqlOrder sqlGenerator) $
         -- Postgres requires all 'DISTINCT ON' expressions to appear before any other
         -- 'ORDER BY' expressions if there are any.
         maybe [] (map (HPQ.OrderExpr ascOp) . NEL.toList) distinctExprs ++ orderExprs
