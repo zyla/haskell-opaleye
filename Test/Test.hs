@@ -1191,6 +1191,28 @@ testForUpdate = do
       testH (OL.forUpdate table1Q) (`shouldBe` table1data)
 
 
+testShowSqlAnonymized :: Test
+testShowSqlAnonymized = do
+  it "Replaces literals with ?" $ \_ ->
+    (lines <$> O.showSqlAnonymized select) `shouldBe` Just
+      ["SELECT"
+      ,"\"column10_1\" as \"result1_2\","
+      ,"\"column21_1\" as \"result2_2\""
+      ,"FROM (SELECT"
+      ,"      *"
+      ,"      FROM (SELECT"
+      ,"            \"column1\" as \"column10_1\","
+      ,"            \"column2\" as \"column21_1\""
+      ,"            FROM \"table1\" as \"T1\") as \"T1\""
+      ,"      WHERE ((\"column10_1\") = (CAST(? AS integer)))) as \"T1\""
+      ]
+
+  where select = proc () -> do
+          t <- table1Q -< ()
+          O.restrict -< fst t .== 1
+          Arr.returnA -< t
+
+
 main :: IO ()
 main = do
   let envVarName = "POSTGRES_CONNSTRING"
@@ -1339,3 +1361,5 @@ main = do
         testMaybeFieldsDistinct
       describe "Locking" $ do
         testForUpdate
+      describe "showSqlAnonymized" $ do
+        testShowSqlAnonymized

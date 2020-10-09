@@ -21,6 +21,7 @@ import qualified Data.Text.Lazy.Builder.Scientific as Sci
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.Builder as LT
 import qualified Text.Printf
+import Data.Function (fix)
 
 
 mkSqlGenerator :: SqlGenerator -> SqlGenerator
@@ -37,6 +38,8 @@ mkSqlGenerator gen = SqlGenerator
 defaultSqlGenerator :: SqlGenerator
 defaultSqlGenerator = mkSqlGenerator defaultSqlGenerator
 
+anonymizingSqlGenerator :: SqlGenerator
+anonymizingSqlGenerator = fix $ \gen -> (mkSqlGenerator gen) { sqlLiteral = \_ -> "?" }
 
 toSqlOrder :: SqlGenerator -> OrderExpr -> (SqlExpr,SqlOrder)
 toSqlOrder gen (OrderExpr o e) =

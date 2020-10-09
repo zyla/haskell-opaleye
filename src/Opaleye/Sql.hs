@@ -7,6 +7,9 @@ module Opaleye.Sql (
   -- * Explicit versions
   showSqlExplicit,
   showSqlUnoptExplicit,
+  -- * Anonymized
+  showSqlAnonymized,
+  showSqlAnonymizedExplicit,
   -- * Deprecated functions
   showSqlForPostgres,
   showSqlForPostgresUnopt,
@@ -20,6 +23,7 @@ import qualified Opaleye.Internal.Optimize as Op
 import           Opaleye.Internal.Helpers ((.:), atSameType)
 import qualified Opaleye.Internal.QueryArr as Q
 import qualified Opaleye.Internal.HaskellDB.Sql.Default as SD
+import qualified Opaleye.Internal.HaskellDB.Sql.Generate as SG
 
 import qualified Opaleye.Select as S
 
@@ -51,7 +55,7 @@ showSql = showSqlExplicit (atSameType D.def)
 showSqlAnonymized :: D.Default U.Unpackspec fields fields
         => S.Select fields
         -> Maybe String
-showSqlAnonymized = showSqlExplicit (atSameType D.def)
+showSqlAnonymized = showSqlExplicitWith SD.anonymizingSqlGenerator (atSameType D.def)
 
 -- | Show the unoptimized SQL query string generated from the 'S.Select'.
 showSqlUnopt :: D.Default U.Unpackspec fields fields
@@ -60,12 +64,18 @@ showSqlUnopt :: D.Default U.Unpackspec fields fields
 showSqlUnopt = showSqlUnoptExplicit (atSameType D.def)
 
 showSqlExplicit :: U.Unpackspec fields b -> S.Select fields -> Maybe String
-showSqlExplicit = Pr.formatAndShowSQL SD.defaultSqlGenerator
+showSqlExplicit = showSqlExplicitWith SD.defaultSqlGenerator
+
+showSqlExplicitWith :: SG.SqlGenerator -> U.Unpackspec fields b -> S.Select fields -> Maybe String
+showSqlExplicitWith sg = Pr.formatAndShowSQL sg
                   . (\(x, y, z) -> (x, Op.optimize y, z))
                   .: Q.runQueryArrUnpack
 
 showSqlUnoptExplicit :: U.Unpackspec fields b -> S.Select fields -> Maybe String
 showSqlUnoptExplicit = Pr.formatAndShowSQL SD.defaultSqlGenerator .: Q.runQueryArrUnpack
+
+showSqlAnonymizedExplicit :: U.Unpackspec fields b -> S.Select fields -> Maybe String
+showSqlAnonymizedExplicit = showSqlExplicitWith SD.anonymizingSqlGenerator
 
 {-# DEPRECATED showSqlForPostgres "Will be removed in version 0.8.  Use 'showSql' instead." #-}
 showSqlForPostgres :: forall columns . D.Default U.Unpackspec columns columns =>
