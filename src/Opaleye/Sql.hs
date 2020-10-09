@@ -19,6 +19,7 @@ import qualified Opaleye.Internal.Print as Pr
 import qualified Opaleye.Internal.Optimize as Op
 import           Opaleye.Internal.Helpers ((.:), atSameType)
 import qualified Opaleye.Internal.QueryArr as Q
+import qualified Opaleye.Internal.HaskellDB.Sql.Default as SD
 
 import qualified Opaleye.Select as S
 
@@ -46,6 +47,12 @@ showSql :: D.Default U.Unpackspec fields fields
         -> Maybe String
 showSql = showSqlExplicit (atSameType D.def)
 
+-- | Show SQL query in anonymized form, i.e. literals replaced with "?".
+showSqlAnonymized :: D.Default U.Unpackspec fields fields
+        => S.Select fields
+        -> Maybe String
+showSqlAnonymized = showSqlExplicit (atSameType D.def)
+
 -- | Show the unoptimized SQL query string generated from the 'S.Select'.
 showSqlUnopt :: D.Default U.Unpackspec fields fields
              => S.Select fields
@@ -53,12 +60,12 @@ showSqlUnopt :: D.Default U.Unpackspec fields fields
 showSqlUnopt = showSqlUnoptExplicit (atSameType D.def)
 
 showSqlExplicit :: U.Unpackspec fields b -> S.Select fields -> Maybe String
-showSqlExplicit = Pr.formatAndShowSQL
+showSqlExplicit = Pr.formatAndShowSQL SD.defaultSqlGenerator
                   . (\(x, y, z) -> (x, Op.optimize y, z))
                   .: Q.runQueryArrUnpack
 
 showSqlUnoptExplicit :: U.Unpackspec fields b -> S.Select fields -> Maybe String
-showSqlUnoptExplicit = Pr.formatAndShowSQL .: Q.runQueryArrUnpack
+showSqlUnoptExplicit = Pr.formatAndShowSQL SD.defaultSqlGenerator .: Q.runQueryArrUnpack
 
 {-# DEPRECATED showSqlForPostgres "Will be removed in version 0.8.  Use 'showSql' instead." #-}
 showSqlForPostgres :: forall columns . D.Default U.Unpackspec columns columns =>

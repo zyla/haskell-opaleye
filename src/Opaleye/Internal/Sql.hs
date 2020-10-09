@@ -86,34 +86,34 @@ data Exists = Exists
   , existsCriteria :: Select
   } deriving Show
 
-sqlQueryGenerator :: PQ.PrimQueryFold' V.Void Select
-sqlQueryGenerator = PQ.PrimQueryFold
+sqlQueryGenerator :: SG.SqlGenerator -> PQ.PrimQueryFold' V.Void Select
+sqlQueryGenerator sqlGenerator = PQ.PrimQueryFold
   { PQ.unit              = unit
   , PQ.empty             = empty
-  , PQ.baseTable         = baseTable
-  , PQ.product           = product
-  , PQ.aggregate         = aggregate
+  , PQ.baseTable         = baseTable sqlGenerator
+  , PQ.product           = product sqlGenerator
+  , PQ.aggregate         = aggregate sqlGenerator
   , PQ.distinctOnOrderBy = distinctOnOrderBy
   , PQ.limit             = limit_
-  , PQ.join              = join
-  , PQ.values            = values
+  , PQ.join              = join sqlGenerator
+  , PQ.values            = values sqlGenerator
   , PQ.binary            = binary
   , PQ.label             = label
-  , PQ.relExpr           = relExpr
+  , PQ.relExpr           = relExpr sqlGenerator
   , PQ.existsf           = exists
-  , PQ.rebind            = rebind
+  , PQ.rebind            = rebind sqlGenerator
   , PQ.forUpdate         = forUpdate
   }
 
 exists :: Bool -> Select -> Select -> Select
 exists b q1 q2 = SelectExists (Exists b q1 q2)
 
-sql :: ([HPQ.PrimExpr], PQ.PrimQuery' V.Void, T.Tag) -> Select
-sql (pes, pq, t) = SelectFrom $ newSelect { attrs = SelectAttrs (ensureColumns (makeAttrs pes))
+sql :: SG.SqlGenerator -> ([HPQ.PrimExpr], PQ.PrimQuery' V.Void, T.Tag) -> Select
+sql sqlGenerator (pes, pq, t) = SelectFrom $ newSelect { attrs = SelectAttrs (ensureColumns (makeAttrs pes))
                                           , tables = oneTable pqSelect }
-  where pqSelect = PQ.foldPrimQuery sqlQueryGenerator pq
+  where pqSelect = PQ.foldPrimQuery (sqlQueryGenerator sqlGenerator) pq
         makeAttrs = flip (zipWith makeAttr) [1..]
-        makeAttr pe i = sqlBinding (Symbol ("result" ++ show (i :: Int)) t, pe)
+        makeAttr pe i = sqlBinding sqlGenerator (Symbol ("result" ++ show (i :: Int)) t, pe)
 
 unit :: Select
 unit = SelectFrom newSelect { attrs  = SelectAttrs (ensureColumns []) }
@@ -124,25 +124,26 @@ empty = V.absurd
 oneTable :: t -> [(Lateral, t)]
 oneTable t = [(NonLateral, t)]
 
-baseTable :: PQ.TableIdentifier -> [(Symbol, HPQ.PrimExpr)] -> Select
-baseTable ti columns = SelectFrom $
-    newSelect { attrs = SelectAttrs (ensureColumns (map sqlBinding columns))
+baseTable :: SG.SqlGenerator -> PQ.TableIdentifier -> [(Symbol, HPQ.PrimExpr)] -> Select
+baseTable sqlGenerator ti columns = SelectFrom $
+    newSelect { attrs = SelectAttrs (ensureColumns (map (sqlBinding sqlGenerator) columns))
               , tables = oneTable (Table (HSql.SqlTable (PQ.tiSchemaName ti) (PQ.tiTableName ti))) }
 
-product :: NEL.NonEmpty (PQ.Lateral, Select) -> [HPQ.PrimExpr] -> Select
-product ss pes = SelectFrom $
+product :: SG.SqlGenerator -> NEL.NonEmpty (PQ.Lateral, Select) -> [HPQ.PrimExpr] -> Select
+product sqlGenerator ss pes = SelectFrom $
     newSelect { tables = NEL.toList ss'
-              , criteria = map sqlExpr pes }
+              , criteria = map (sqlExpr sqlGenerator) pes }
   where ss' = flip fmap ss $ Arr.first $ \case
           PQ.Lateral    -> Lateral
           PQ.NonLateral -> NonLateral
 
-aggregate :: [(Symbol,
+aggregate :: SG.SqlGenerator
+          -> [(Symbol,
                (Maybe (HPQ.AggrOp, [HPQ.OrderExpr], HPQ.AggrDistinct),
                 HPQ.Symbol))]
           -> Select
           -> Select
-aggregate aggrs' s =
+aggregate sqlGenerator aggrs' s =
   SelectFrom $ newSelect { attrs = SelectAttrs (ensureColumns (map attr aggrs))
                          , tables = oneTable s
                          , groupBy = (Just . groupBy') aggrs }
@@ -176,10 +177,10 @@ aggregate aggrs' s =
         groupBy' :: [(symbol, (Maybe aggrOp, HPQ.PrimExpr))]
                  -> NEL.NonEmpty HSql.SqlExpr
         groupBy' = handleEmpty
-                   . map sqlExpr
+                   . map (sqlExpr sqlGenerator)
                    . map expr
                    . filter (M.isNothing . aggrOp)
-        attr = sqlBinding . Arr.second (uncurry aggrExpr)
+        attr = sqlBinding sqlGenerator . Arr.second (uncurry aggrExpr)
         expr (_, (_, e)) = e
         aggrOp (_, (x, _)) = x
 
@@ -190,7 +191,7 @@ aggrExpr = maybe id (\(op, ord, distinct) e -> HPQ.AggrExpr distinct op e ord)
 distinctOnOrderBy :: Maybe (NEL.NonEmpty HPQ.PrimExpr) -> [HPQ.OrderExpr] -> Select -> Select
 distinctOnOrderBy distinctExprs orderExprs s = SelectFrom $ newSelect
     { tables     = oneTable s
-    , distinctOn = fmap (SG.sqlExpr SD.defaultSqlGenerator) <$> distinctExprs
+    , distinctOn = fmap (sqlExpr SD.defaultSqlGenerator) <$> distinctExprs
     , orderBy    = map (SD.toSqlOrder SD.defaultSqlGenerator) $
         -- Postgres requires all 'DISTINCT ON' expressions to appear before any other
         -- 'ORDER BY' expressions if there are any.
@@ -210,29 +211,30 @@ limit_ lo s = SelectFrom $ newSelect { tables = oneTable s
           PQ.OffsetOp n        -> (Nothing, Just n)
           PQ.LimitOffsetOp l o -> (Just l, Just o)
 
-join :: PQ.JoinType
+join :: SG.SqlGenerator
+     -> PQ.JoinType
      -> HPQ.PrimExpr
      -> PQ.Bindings HPQ.PrimExpr
      -> PQ.Bindings HPQ.PrimExpr
      -> Select
      -> Select
      -> Select
-join j cond pes1 pes2 s1 s2 =
+join sqlGenerator j cond pes1 pes2 s1 s2 =
   SelectJoin Join { jJoinType = joinType j
                   , jTables   = (selectFrom pes1 s1, selectFrom pes2 s2)
-                  , jCond     = sqlExpr cond }
+                  , jCond     = sqlExpr sqlGenerator cond }
   where selectFrom pes s = SelectFrom $ newSelect {
-            attrs  = SelectAttrsStar (ensureColumns (map sqlBinding pes))
+            attrs  = SelectAttrsStar (ensureColumns (map (sqlBinding sqlGenerator) pes))
           , tables = oneTable s
           }
 
 -- Postgres seems to name columns of VALUES clauses "column1",
 -- "column2", ... . I'm not sure to what extent it is customisable or
 -- how robust it is to rely on this
-values :: [Symbol] -> NEL.NonEmpty [HPQ.PrimExpr] -> Select
-values columns pes = SelectValues Values { vAttrs  = SelectAttrs (mkColumns columns)
-                                         , vValues = NEL.toList ((fmap . map) sqlExpr pes) }
-  where mkColumns = ensureColumns . zipWith (flip (curry (sqlBinding . Arr.second mkColumn))) [1..]
+values :: SG.SqlGenerator -> [Symbol] -> NEL.NonEmpty [HPQ.PrimExpr] -> Select
+values sqlGenerator columns pes = SelectValues Values { vAttrs  = SelectAttrs (mkColumns columns)
+                                         , vValues = NEL.toList ((fmap . map) (sqlExpr sqlGenerator) pes) }
+  where mkColumns = ensureColumns . zipWith (flip (curry (sqlBinding sqlGenerator . Arr.second mkColumn))) [1..]
         mkColumn i = (HPQ.BaseTableAttrExpr . ("column" ++) . show) (i::Int)
 
 binary :: PQ.BinOp -> (Select, Select) -> Select
@@ -269,12 +271,12 @@ newSelect = From {
   for        = Nothing
   }
 
-sqlExpr :: HPQ.PrimExpr -> HSql.SqlExpr
-sqlExpr = SG.sqlExpr SD.defaultSqlGenerator
+sqlExpr :: SG.SqlGenerator -> HPQ.PrimExpr -> HSql.SqlExpr
+sqlExpr = SG.sqlExpr
 
-sqlBinding :: (Symbol, HPQ.PrimExpr) -> (HSql.SqlExpr, Maybe HSql.SqlColumn)
-sqlBinding (Symbol sym t, pe) =
-  (sqlExpr pe, Just (HSql.SqlColumn (T.tagWith t sym)))
+sqlBinding :: SG.SqlGenerator -> (Symbol, HPQ.PrimExpr) -> (HSql.SqlExpr, Maybe HSql.SqlColumn)
+sqlBinding sqlGenerator (Symbol sym t, pe) =
+  (sqlExpr sqlGenerator pe, Just (HSql.SqlColumn (T.tagWith t sym)))
 
 ensureColumns :: [(HSql.SqlExpr, Maybe a)]
              -> NEL.NonEmpty (HSql.SqlExpr, Maybe a)
@@ -291,15 +293,15 @@ label :: String -> Select -> Select
 label l s = SelectLabel (Label l s)
 
 -- Very similar to 'baseTable'
-relExpr :: HPQ.PrimExpr -> [(Symbol, HPQ.PrimExpr)] -> Select
-relExpr pe columns = SelectFrom $
-    newSelect { attrs = SelectAttrs (ensureColumns (map sqlBinding columns))
-              , tables = oneTable (RelExpr (sqlExpr pe))
+relExpr :: SG.SqlGenerator -> HPQ.PrimExpr -> [(Symbol, HPQ.PrimExpr)] -> Select
+relExpr sqlGenerator pe columns = SelectFrom $
+    newSelect { attrs = SelectAttrs (ensureColumns (map (sqlBinding sqlGenerator) columns))
+              , tables = oneTable (RelExpr (sqlExpr sqlGenerator pe))
               }
 
-rebind :: Bool -> [(Symbol, HPQ.PrimExpr)] -> Select -> Select
-rebind star pes select = SelectFrom newSelect
-  { attrs = selectAttrs (ensureColumns (map sqlBinding pes))
+rebind :: SG.SqlGenerator -> Bool -> [(Symbol, HPQ.PrimExpr)] -> Select -> Select
+rebind sqlGenerator star pes select = SelectFrom newSelect
+  { attrs = selectAttrs (ensureColumns (map (sqlBinding sqlGenerator) pes))
   , tables = oneTable select
   }
   where selectAttrs = case star of

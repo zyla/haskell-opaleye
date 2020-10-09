@@ -63,7 +63,7 @@ arrangeInsertManyReturning unpackspec table columns returningf onConflict =
   where insert = arrangeInsertMany table columns onConflict
         TI.View columnsR = TI.tableColumnsView (TI.tableColumns table)
         returningPEs = U.collectPEs unpackspec (returningf columnsR)
-        returningSEs = Sql.ensureColumnsGen id (map Sql.sqlExpr returningPEs)
+        returningSEs = Sql.ensureColumnsGen id (map (Sql.sqlExpr SD.defaultSqlGenerator) returningPEs)
 
 arrangeInsertManyReturningSql :: U.Unpackspec columnsReturned ignored
                               -> T.Table columnsW columnsR
@@ -140,7 +140,7 @@ arrangeDeleteReturning unpackspec t cond returningf =
   where delete = arrangeDelete t cond
         TI.View columnsR = TI.tableColumnsView (TI.tableColumns t)
         returningPEs = U.collectPEs unpackspec (returningf columnsR)
-        returningSEs = Sql.ensureColumnsGen id (map Sql.sqlExpr returningPEs)
+        returningSEs = Sql.ensureColumnsGen id (map (Sql.sqlExpr SD.defaultSqlGenerator) returningPEs)
 
 arrangeDeleteReturningSql :: U.Unpackspec columnsReturned ignored
                           -> T.Table columnsW columnsR
@@ -272,7 +272,7 @@ arrangeUpdateReturning unpackspec t updatef cond returningf =
   where update = arrangeUpdate t updatef cond
         TI.View columnsR = TI.tableColumnsView (TI.tableColumns t)
         returningPEs = U.collectPEs unpackspec (returningf columnsR)
-        returningSEs = Sql.ensureColumnsGen id (map Sql.sqlExpr returningPEs)
+        returningSEs = Sql.ensureColumnsGen id (map (Sql.sqlExpr SD.defaultSqlGenerator) returningPEs)
 
 arrangeUpdateReturningSql :: U.Unpackspec columnsReturned ignored
                           -> T.Table columnsW columnsR

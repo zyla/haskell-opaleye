@@ -19,6 +19,7 @@ import qualified Opaleye.Internal.PrimQuery as PQ
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as HPQ
 import qualified Opaleye.Internal.HaskellDB.Sql as HSql
 import qualified Opaleye.Internal.HaskellDB.Sql.Print as HPrint
+import qualified Opaleye.Internal.HaskellDB.Sql.Generate as SG
 import qualified Opaleye.Internal.Optimize as Op
 import qualified Opaleye.Internal.Tag as T
 
@@ -193,8 +194,8 @@ ppDeleteReturning (Sql.Returning delete returnExprs) =
 -- * Bits from "Opaleye.Sql".  They don't really belong here but I
 -- * have to put them somewhere.
 
-formatAndShowSQL :: ([HPQ.PrimExpr], PQ.PrimQuery' a, T.Tag) -> Maybe String
-formatAndShowSQL = fmap (show . ppSql . Sql.sql) . traverse2Of3 Op.removeEmpty
+formatAndShowSQL :: SG.SqlGenerator -> ([HPQ.PrimExpr], PQ.PrimQuery' a, T.Tag) -> Maybe String
+formatAndShowSQL sqlGenerator = fmap (show . ppSql . Sql.sql sqlGenerator) . traverse2Of3 Op.removeEmpty
   where -- Just a lens
         traverse2Of3 :: Functor f => (a -> f b) -> (x, a, y) -> f (x, b, y)
         traverse2Of3 f (x, y, z) = fmap (\y' -> (x, y', z)) (f y)
