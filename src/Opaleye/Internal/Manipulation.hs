@@ -44,10 +44,17 @@ arrangeInsertMany :: T.Table columns a
                   -> NEL.NonEmpty columns
                   -> Maybe HSql.OnConflict
                   -> HSql.SqlInsert
-arrangeInsertMany table columns onConflict = insert
+arrangeInsertMany = arrangeInsertManyWith SD.defaultSqlGenerator
+
+arrangeInsertManyWith :: SG.SqlGenerator
+                      -> T.Table columns a
+                      -> NEL.NonEmpty columns
+                      -> Maybe HSql.OnConflict
+                      -> HSql.SqlInsert
+arrangeInsertManyWith sqlGenerator table columns onConflict = insert
   where writer = TI.tableColumnsWriter (TI.tableColumns table)
         (columnExprs, columnNames) = TI.runWriter' writer columns
-        insert = SG.sqlInsert SD.defaultSqlGenerator
+        insert = SG.sqlInsert sqlGenerator
                       (PQ.tiToSqlTable (TI.tableIdentifier table))
                       columnNames columnExprs
                       onConflict
@@ -58,12 +65,21 @@ arrangeInsertManyReturning :: U.Unpackspec columnsReturned ignored
                            -> (columnsR -> columnsReturned)
                            -> Maybe HSql.OnConflict
                            -> Sql.Returning HSql.SqlInsert
-arrangeInsertManyReturning unpackspec table columns returningf onConflict =
+arrangeInsertManyReturning = arrangeInsertManyReturningWith SD.defaultSqlGenerator
+
+arrangeInsertManyReturningWith :: SG.SqlGenerator
+                               -> U.Unpackspec columnsReturned ignored
+                               -> T.Table columnsW columnsR
+                               -> NEL.NonEmpty columnsW
+                               -> (columnsR -> columnsReturned)
+                               -> Maybe HSql.OnConflict
+                               -> Sql.Returning HSql.SqlInsert
+arrangeInsertManyReturningWith sqlGenerator unpackspec table columns returningf onConflict =
   Sql.Returning insert returningSEs
-  where insert = arrangeInsertMany table columns onConflict
+  where insert = arrangeInsertManyWith sqlGenerator table columns onConflict
         TI.View columnsR = TI.tableColumnsView (TI.tableColumns table)
         returningPEs = U.collectPEs unpackspec (returningf columnsR)
-        returningSEs = Sql.ensureColumnsGen id (map (Sql.sqlExpr SD.defaultSqlGenerator) returningPEs)
+        returningSEs = Sql.ensureColumnsGen id (map (Sql.sqlExpr sqlGenerator) returningPEs)
 
 arrangeInsertManyReturningSql :: U.Unpackspec columnsReturned ignored
                               -> T.Table columnsW columnsR
@@ -74,12 +90,28 @@ arrangeInsertManyReturningSql :: U.Unpackspec columnsReturned ignored
 arrangeInsertManyReturningSql =
   show . Print.ppInsertReturning .::. arrangeInsertManyReturning
 
+arrangeInsertManyReturningSqlAnonymized :: U.Unpackspec columnsReturned ignored
+                                        -> T.Table columnsW columnsR
+                                        -> NEL.NonEmpty columnsW
+                                        -> (columnsR -> columnsReturned)
+                                        -> Maybe HSql.OnConflict
+                                        -> String
+arrangeInsertManyReturningSqlAnonymized =
+  show . Print.ppInsertReturning .::. arrangeInsertManyReturningWith SD.anonymizingSqlGenerator
+
 arrangeInsertManySql :: T.Table columnsW columnsR
                      -> NEL.NonEmpty columnsW
                      -> Maybe HSql.OnConflict
                      -> String
 arrangeInsertManySql =
   show . HPrint.ppInsert .:. arrangeInsertMany
+
+arrangeInsertManySqlAnonymized :: T.Table columnsW columnsR
+                               -> NEL.NonEmpty columnsW
+                               -> Maybe HSql.OnConflict
+                               -> String
+arrangeInsertManySqlAnonymized =
+  show . HPrint.ppInsert .:. arrangeInsertManyWith SD.anonymizingSqlGenerator
 
 runInsertManyReturningExplicit
   :: RS.FromFields columnsReturned haskells
@@ -180,8 +212,11 @@ runDeleteReturningExplicit qr conn t cond r =
         TI.View v = TI.tableColumnsView (TI.tableColumns t)
 
 arrangeDelete :: T.Table a columnsR -> (columnsR -> Column SqlBool) -> HSql.SqlDelete
-arrangeDelete t cond =
-  SG.sqlDelete SD.defaultSqlGenerator (PQ.tiToSqlTable (TI.tableIdentifier t)) [condExpr]
+arrangeDelete = arrangeDeleteWith SD.defaultSqlGenerator
+
+arrangeDeleteWith :: SG.SqlGenerator -> T.Table a columnsR -> (columnsR -> Column SqlBool) -> HSql.SqlDelete
+arrangeDeleteWith sqlGenerator t cond =
+  SG.sqlDelete sqlGenerator (PQ.tiToSqlTable (TI.tableIdentifier t)) [condExpr]
   where Column condExpr = cond tableCols
         TI.View tableCols = TI.tableColumnsView (TI.tableColumns t)
 
@@ -229,8 +264,13 @@ arrangeInsertManySqlI t c  = arrangeInsertManySql t c Nothing
 arrangeUpdate :: T.Table columnsW columnsR
               -> (columnsR -> columnsW) -> (columnsR -> Column SqlBool)
               -> HSql.SqlUpdate
-arrangeUpdate t update cond =
-  SG.sqlUpdate SD.defaultSqlGenerator
+arrangeUpdate = arrangeUpdateWith SD.defaultSqlGenerator
+
+arrangeUpdateWith :: SG.SqlGenerator -> T.Table columnsW columnsR
+                  -> (columnsR -> columnsW) -> (columnsR -> Column SqlBool)
+                  -> HSql.SqlUpdate
+arrangeUpdateWith sqlGenerator t update cond =
+  SG.sqlUpdate sqlGenerator
                (PQ.tiToSqlTable (TI.tableIdentifier t))
                [condExpr] (update' tableCols)
   where TI.TableFields writer (TI.View tableCols) = TI.tableColumns t
@@ -244,6 +284,9 @@ arrangeUpdateSql = show . HPrint.ppUpdate .:. arrangeUpdate
 
 arrangeDeleteSql :: T.Table a columnsR -> (columnsR -> Column SqlBool) -> String
 arrangeDeleteSql = show . HPrint.ppDelete .: arrangeDelete
+
+arrangeDeleteSqlAnonymized :: T.Table a columnsR -> (columnsR -> Column SqlBool) -> String
+arrangeDeleteSqlAnonymized = show . HPrint.ppDelete .: arrangeDeleteWith SD.anonymizingSqlGenerator
 
 arrangeInsertManyReturningI :: U.Unpackspec columnsReturned ignored
                             -> T.Table columnsW columnsR
